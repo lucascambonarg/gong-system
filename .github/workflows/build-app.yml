@@ -1,0 +1,69 @@
+name: Build gong app
+
+# Builds GongApp.exe for Windows. Run it by hand from the Actions tab, or push
+# a tag such as v3.0 to also publish the zip as a release.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run the tests
+        run: python -m unittest discover tests
+
+      - name: Build the executable
+        run: |
+          python -m pip install pygame==2.6.1 pyinstaller==6.11.1
+          pyinstaller --onefile --windowed --name GongApp --paths app app/gong_app.py
+
+      - name: Put the app folder together
+        shell: bash
+        run: |
+          mkdir GongApp
+          cp dist/GongApp.exe GongApp/
+          cp "app/assets/Gong Recorded (edited).wav" app/assets/PlayIcon.png GongApp/
+          cp timetable.csv schedules.json GongApp/
+          cp app/INSTALL.txt GongApp/
+
+      - name: Check the built app starts and reads its files
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "GongApp\GongApp.exe" -ArgumentList "--selftest" -Wait -PassThru
+          Get-Content "GongApp\selftest.txt"
+          Remove-Item "GongApp\selftest.txt"
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: Check the built app can download the timetable
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Copy-Item GongApp GongAppOnline -Recurse
+          $p = Start-Process -FilePath "GongAppOnline\GongApp.exe" -ArgumentList "--selftest-online" -Wait -PassThru
+          Get-Content "GongAppOnline\selftest.txt"
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GongApp
+          path: GongApp
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Compress-Archive -Path GongApp -DestinationPath GongApp.zip
+          gh release create "$env:GITHUB_REF_NAME" GongApp.zip --title "Gong System $env:GITHUB_REF_NAME" --notes "Unzip, then follow INSTALL.txt."

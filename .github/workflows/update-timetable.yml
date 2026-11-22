@@ -1,0 +1,89 @@
+name: Update timetable
+
+# Reads the Dhamma Padhana course schedule every day and updates timetable.csv.
+# If anything looks wrong it changes nothing and opens an issue (GitHub emails
+# the repository owner about new issues).
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # every day at 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency: update-timetable
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_TITLE: "Timetable update needs attention"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the rules still pass their tests
+        run: python -m unittest discover tests
+
+      - name: Build the timetable from the website
+        id: build
+        continue-on-error: true
+        run: python updater/build_timetable.py --summary result.txt
+
+      - name: Show the result
+        if: always()
+        run: |
+          test -f result.txt || echo "STOPPED: the update did not run (see the log of this run)." > result.txt
+          cat result.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save changes
+        if: steps.build.outcome == 'success'
+        run: |
+          git config user.name "timetable-updater"
+          git config user.email "timetable-updater@users.noreply.github.com"
+          printf '{"last_checked": "%s", "result": "ok"}\n' "$(date -u +%F)" > status.json
+          if ! git diff --quiet -- timetable.csv; then
+            git add timetable.csv status.json
+            git commit -q -F result.txt
+            git push
+          elif [ "$(date -u +%u)" = "1" ]; then
+            # Weekly sign of life. GitHub pauses scheduled jobs in repositories
+            # with no activity for 60 days; this keeps the job running.
+            git add status.json
+            git commit -q -m "Timetable checked, no changes"
+            git push
+          fi
+
+      - name: Close the alert if one is open
+        if: steps.build.outcome == 'success'
+        run: |
+          n=$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" --json number --jq '.[0].number')
+          if [ -n "$n" ]; then
+            gh issue close "$n" --comment "The update ran without problems again."
+          fi
+
+      - name: Raise an alert
+        if: steps.build.outcome != 'success'
+        run: |
+          {
+            echo "The daily timetable update stopped and left timetable.csv unchanged."
+            echo
+            echo '```'
+            cat result.txt
+            echo '```'
+            echo
+            echo "The gong app keeps using the timetable it already has."
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > body.md
+          n=$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" --json number --jq '.[0].number')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body-file body.md
+          else
+            gh issue create --title "$ISSUE_TITLE" --body-file body.md
+          fi
+          exit 1

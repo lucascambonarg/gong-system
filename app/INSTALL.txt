@@ -1,0 +1,36 @@
+GONG SYSTEM, VERSION 3 - INSTALLING ON THE TABLET
+
+1. Copy this whole "GongApp" folder to the tablet, for example to the Desktop.
+   Keep all the files together in the folder:
+     GongApp.exe
+     Gong Recorded (edited).wav
+     PlayIcon.png
+     timetable.csv
+     schedules.json
+
+2. Close the old Gong System (version 2) if it is running.
+   Two copies running at once would ring every gong twice.
+
+3. Double-click GongApp.exe. There is no file to select.
+   The first time, Windows may show "Windows protected your PC".
+   Choose "More info", then "Run anyway".
+
+4. Make it start by itself when the tablet turns on:
+   - Right-click GongApp.exe and choose "Create shortcut".
+   - Press the Windows key + R, type  shell:startup  and press Enter.
+   - Move the shortcut into the folder that opens.
+
+WHAT THE SCREEN SHOWS
+
+- Current Type: today's type of day.
+- A grey line at the bottom: the next gong, how far ahead the timetable
+  runs, and when it was last checked online.
+- Red text: something needs attention (no timetable for today, or the
+  sound cannot be played). The app keeps running and keeps retrying.
+
+The app downloads the timetable and the gong times by itself, at start-up
+and several times a day. Without internet it uses the copies saved in this
+folder, so the gongs keep ringing.
+
+As before: the gong after the discourse and the Day 0 afternoon and evening
+gongs are rung by hand, with the push button, the play icon or the space bar.
