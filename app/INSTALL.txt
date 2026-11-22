@@ -4,6 +4,7 @@ GONG SYSTEM, VERSION 3 - INSTALLING ON THE TABLET
    Keep all the files together in the folder:
      GongApp.exe
      Gong Recorded (edited).wav
+     logo.gif
      timetable.csv
      schedules.json
 

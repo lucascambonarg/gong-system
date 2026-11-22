@@ -22,8 +22,10 @@ from logging.handlers import RotatingFileHandler
 
 import core
 
-VERSION = "3.1"
+VERSION = "3.2"
+CONFIRM_SECONDS = 5  # time allowed for the second tap that turns automatic gongs off
 TICK_MS = 250
+LOGO_FILE = "logo.gif"  # the Dhamma wheel from dhamma.org, shown beside the title
 
 log = logging.getLogger("gong")
 
@@ -47,7 +49,7 @@ BAD_BG = "#FBE9E7"
 # Sizes at the design size of the window; they scale with the window.
 DESIGN_W, DESIGN_H = 1180, 760
 FONT_SIZES = {
-    "title": (22, "bold"),
+    "title": (38, "bold"),
     "clock": (44, "bold"),
     "date": (15, "normal"),
     "label": (12, "bold"),
@@ -57,8 +59,8 @@ FONT_SIZES = {
     "countdown": (22, "normal"),
     "gong": (21, "normal"),
     "gong_next": (21, "bold"),
-    "button": (20, "bold"),
-    "button2": (15, "normal"),
+    "button": (26, "bold"),
+    "button2": (13, "normal"),
     "alert": (18, "bold"),
     "status": (13, "normal"),
 }
@@ -128,6 +130,11 @@ class Gong:
     def play(self) -> None:
         threading.Thread(target=self._play_blocking, daemon=True).start()
 
+    def play_if_idle(self) -> None:
+        """For the button and the space key: extra presses while it rings do nothing."""
+        if not self._lock.locked():
+            self.play()
+
 
 # --------------------------------------------------------------------------
 # Window
@@ -148,6 +155,7 @@ class GongWindow:
 
         self.today = date.today()
         self.deactivated_today = False
+        self._confirm_until: datetime | None = None
         self._refreshing = False
         self._next_refresh = datetime.now()  # try straight away
         self._shown: dict = {}  # last values put on screen, to avoid needless redraws
@@ -183,7 +191,12 @@ class GongWindow:
         # Header: name on the left, clock and date on the right.
         header = tk.Frame(page, bg=BG)
         header.grid(row=0, column=0, columnspan=2, sticky="ew")
-        tk.Label(header, text="Gong System", font=F["title"], bg=BG, fg=INK).pack(side="left", anchor="s", pady=(0, 6))
+        try:  # the wheel is decoration: the app runs the same without the file
+            self.logo = tk.PhotoImage(file=str(folder / LOGO_FILE))
+            tk.Label(header, image=self.logo, bg=BG).pack(side="left", padx=(0, 20))
+        except tk.TclError:
+            self.logo = None
+        tk.Label(header, text="Gong System", font=F["title"], bg=BG, fg=INK).pack(side="left")
         right = tk.Frame(header, bg=BG)
         right.pack(side="right")
         self.clock_label = tk.Label(right, text="", font=F["clock"], bg=BG, fg=INK)
@@ -226,13 +239,16 @@ class GongWindow:
         self.gong_note.pack(anchor="w", fill="x")
         self.gong_note.bind("<Configure>", lambda e: self.gong_note.config(wraplength=max(200, e.width - 4)))
 
-        # Buttons.
+        # Buttons. "Ring gong now" is large and exactly in the middle; the
+        # switch for automatic gongs is small and in the corner, out of the way.
         buttons = tk.Frame(page, bg=BG)
         buttons.grid(row=3, column=0, columnspan=2, sticky="ew")
-        self.ring_button = self._button(buttons, "Ring gong now", F["button"], ACCENT, ACCENT_DOWN, "#FFFFFF", self.gong.play, padx=44, pady=18)
-        self.ring_button.pack(side="left")
-        self.toggle_button = self._button(buttons, "", F["button2"], SOFT, SOFT_DOWN, INK, self.toggle_automations, padx=26, pady=18)
-        self.toggle_button.pack(side="right")
+        buttons.columnconfigure(0, weight=1, uniform="side")
+        buttons.columnconfigure(2, weight=1, uniform="side")
+        self.ring_button = self._button(buttons, "Ring gong now", F["button"], ACCENT, ACCENT_DOWN, "#FFFFFF", self.gong.play_if_idle, padx=110, pady=22)
+        self.ring_button.grid(row=0, column=1)
+        self.toggle_button = self._button(buttons, "", F["button2"], SOFT, SOFT_DOWN, INK, self.toggle_automations, padx=18, pady=12)
+        self.toggle_button.grid(row=0, column=2, sticky="e")
 
         # Status line.
         status = tk.Frame(page, bg=BG)
@@ -244,7 +260,7 @@ class GongWindow:
         started = time.strftime("%d %b %Y %H:%M", time.localtime())
         tk.Label(status, text=f"Running since {started}   ·   Version {VERSION}", font=F["status"], bg=BG, fg=MUTED).pack(side="right")
 
-        root.bind("<space>", lambda event: self.gong.play())
+        root.bind("<space>", lambda event: self.gong.play_if_idle())
         root.bind("<Configure>", self._on_resize)
         root.protocol("WM_DELETE_WINDOW", root.destroy)
         log.info("started, version %s, folder %s", VERSION, folder)
@@ -293,6 +309,12 @@ class GongWindow:
     # -- actions -----------------------------------------------------------
 
     def toggle_automations(self) -> None:
+        now = datetime.now()
+        if not self.deactivated_today and not (self._confirm_until and now < self._confirm_until):
+            # Turning the gongs off takes two taps, so one stray touch does nothing.
+            self._confirm_until = now + timedelta(seconds=CONFIRM_SECONDS)
+            return
+        self._confirm_until = None
         self.deactivated_today = not self.deactivated_today
         log.info("automations %s for today", "deactivated" if self.deactivated_today else "activated")
 
@@ -383,10 +405,13 @@ class GongWindow:
 
         # Buttons
         self._set(self.ring_button, text="Ringing…" if self.gong.playing else "Ring gong now")
-        self._set(
-            self.toggle_button,
-            text="Turn automatic gongs back on" if self.deactivated_today else "Turn off automatic gongs for today",
-        )
+        if self.deactivated_today:
+            toggle_text = "Turn automatic gongs back on"
+        elif self._confirm_until and now < self._confirm_until:
+            toggle_text = "Tap again to turn them off"
+        else:
+            toggle_text = "Turn off automatic gongs for today"
+        self._set(self.toggle_button, text=toggle_text)
 
         # Alert banner
         text, colours = self.alert_text(real_type)
