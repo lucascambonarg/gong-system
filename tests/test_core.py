@@ -54,6 +54,32 @@ class Clock(unittest.TestCase):
         self.assertIsNone(core.next_gong(datetime(2027, 3, 1, 22, 0, 0), ["04:00:00", "06:30:10"]))
 
 
+class Words(unittest.TestCase):
+    def test_every_day_type_in_use_has_a_plain_name(self):
+        for day_type in core.parse_schedules(SCHEDULES_TEXT):
+            self.assertIn(day_type, core.DAY_NAMES)
+        self.assertEqual(core.day_name("SomethingNew"), "SomethingNew")
+        self.assertEqual(core.day_name(None), "No timetable entry")
+
+    def test_short_time(self):
+        self.assertEqual(core.short_time("04:00:00"), "04:00")
+        self.assertEqual(core.short_time("06:30:10"), "06:30:10")
+
+    def test_countdown(self):
+        now = datetime(2027, 3, 1, 16, 28, 45)
+        self.assertEqual(core.countdown(now, "17:00:00"), "in 32 min")
+        self.assertEqual(core.countdown(now, "19:07:00"), "in 2 h 39 min")
+        self.assertEqual(core.countdown(now, "16:29:10"), "in 25 s")
+        self.assertEqual(core.countdown(now, "16:00:00"), "")
+
+    def test_has_rung(self):
+        clock = core.GongClock()
+        clock.due(datetime(2027, 3, 1, 4, 0, 0), ["04:00:00", "06:30:10"])
+        self.assertTrue(clock.has_rung(date(2027, 3, 1), "04:00:00"))
+        self.assertFalse(clock.has_rung(date(2027, 3, 1), "06:30:10"))
+        self.assertFalse(clock.has_rung(date(2027, 3, 2), "04:00:00"))
+
+
 class Files(unittest.TestCase):
     def test_bad_files_are_rejected(self):
         for bad in ("", "Day,Kind\n2027-01-01,Day_0\n", "Date,Type\n01/02/2027,Day_0\n", "Date,Type\n2027-01-01,\n"):

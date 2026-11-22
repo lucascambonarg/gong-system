@@ -33,7 +33,7 @@ jobs:
         run: |
           mkdir GongApp
           cp dist/GongApp.exe GongApp/
-          cp "app/assets/Gong Recorded (edited).wav" app/assets/PlayIcon.png GongApp/
+          cp "app/assets/Gong Recorded (edited).wav" GongApp/
           cp timetable.csv schedules.json GongApp/
           cp app/INSTALL.txt GongApp/
 

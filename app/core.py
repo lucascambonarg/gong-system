@@ -28,7 +28,6 @@ DEFAULT_SETTINGS = {
     # How often to retry when today's date is missing or the files are bad.
     "retry_minutes": 15,
     "sound_file": "Gong Recorded (edited).wav",
-    "icon_file": "PlayIcon.png",
 }
 
 TIMETABLE_FILE = "timetable.csv"
@@ -230,6 +229,9 @@ class GongClock:
         self._day: date | None = None
         self._rung: set[str] = set()
 
+    def has_rung(self, day: date, t: str) -> bool:
+        return day == self._day and t in self._rung
+
     def due(self, now: datetime, times: list[str]) -> list[str]:
         """Times that should ring right now and have not rung yet today."""
         if now.date() != self._day:
@@ -250,3 +252,53 @@ def next_gong(now: datetime, times: list[str]) -> str | None:
     current = now.strftime("%H:%M:%S")
     later = [t for t in times if t > current]
     return min(later) if later else None
+
+
+# --------------------------------------------------------------------------
+# Words for the screen
+# --------------------------------------------------------------------------
+
+DAY_NAMES = {
+    "Day_0": "Day 0, course starts",
+    "LongCourse_Normal": "Long course, normal day",
+    "LongCourse_Vipassana": "Long course, Vipassana day",
+    "LongCourse_Metta_1": "Long course, Metta day 1",
+    "LongCourse_Metta_2": "Long course, Metta day 2",
+    "LongCourse_Final": "Long course, final day",
+    "ShortCourse_Normal": "Short course, normal day",
+    "10day_Vipassana": "10-day course, Vipassana day",
+    "ShortCourse_Metta": "Short course, Metta day",
+    "ShortCourse_Final": "Short course, final day",
+    "3Day_1": "3-day course, day 1",
+    "3Day_2": "3-day course, day 2",
+    "3Day_3": "3-day course, day 3",
+    "3Day_Final": "3-day course, final day",
+    "Service_GSP": "Service period",
+    "Empty": "No schedule",
+}
+
+
+def day_name(day_type: str | None) -> str:
+    """Plain words for a day type; an unknown type is shown as it is written."""
+    if not day_type:
+        return "No timetable entry"
+    return DAY_NAMES.get(day_type, day_type)
+
+
+def short_time(t: str) -> str:
+    """'04:00:00' -> '04:00'; seconds are kept only when they matter ('06:30:10')."""
+    return t[:5] if t.endswith(":00") else t
+
+
+def countdown(now: datetime, t: str) -> str:
+    """How long until time t today, in words. Empty if t has passed."""
+    h, m, s = (int(x) for x in t.split(":"))
+    seconds = int((now.replace(hour=h, minute=m, second=s, microsecond=0) - now).total_seconds())
+    if seconds < 0:
+        return ""
+    if seconds < 60:
+        return f"in {seconds} s"
+    minutes = (seconds + 59) // 60
+    if minutes < 60:
+        return f"in {minutes} min"
+    return f"in {minutes // 60} h {minutes % 60:02d} min"
